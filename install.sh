@@ -7,6 +7,7 @@ REPO_BRANCH="${NETCAP_REPO_BRANCH:-main}"
 ARCHIVE_URL="https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_BRANCH}"
 
 INSTALL_LIB_DIR="/usr/local/lib/unit-net-cap"
+INSTALL_PKG_DIR="${INSTALL_LIB_DIR}/unit_net_cap"
 INSTALL_BIN_FILE="/usr/local/bin/netcap"
 STATE_DIR="/var/lib/unit-net-cap"
 SERVICE_FILE="/etc/systemd/system/netcap.service"
@@ -55,7 +56,8 @@ do_install_or_update() {
     local src_root=""
     local tmp_dir=""
 
-    # If run inside an existing repository checkout with src/ and systemd/
+    trap 'if [ -n "${tmp_dir:-}" ] && [ -d "${tmp_dir:-}" ]; then rm -rf "$tmp_dir"; fi' EXIT
+
     local script_dir=""
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
     if [ -n "$script_dir" ] && [ -d "$script_dir/src" ] && [ -f "$script_dir/systemd/netcap.service" ]; then
@@ -63,7 +65,6 @@ do_install_or_update() {
         echo "Installing from local directory: $src_root"
     else
         tmp_dir="$(mktemp -d)"
-        trap '[ -n "${tmp_dir:-}" ] && rm -rf "$tmp_dir"' EXIT
         echo "Downloading ${REPO_OWNER}/${REPO_NAME} (${REPO_BRANCH})..."
         curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$tmp_dir"
         src_root="$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
@@ -75,19 +76,19 @@ do_install_or_update() {
 
     cleanup_line_endings "$src_root"
 
-    mkdir -p "$INSTALL_LIB_DIR" "$STATE_DIR"
-    chmod 755 "$STATE_DIR"
-
     rm -rf "${INSTALL_LIB_DIR:?}/"*
-    cp -r "$src_root/src/"* "$INSTALL_LIB_DIR/"
-    find "$INSTALL_LIB_DIR" -type f -name "*.py" -exec chmod 644 {} +
+    mkdir -p "$INSTALL_PKG_DIR" "$STATE_DIR"
+    chmod 755 "$INSTALL_LIB_DIR" "$INSTALL_PKG_DIR" "$STATE_DIR"
+
+    cp -r "$src_root/src/"* "$INSTALL_PKG_DIR/"
+    find "$INSTALL_PKG_DIR" -type f -name "*.py" -exec chmod 644 {} +
 
     cat > "$INSTALL_BIN_FILE" <<'EOF'
 #!/usr/bin/env python3
 import sys
 
 sys.path.insert(0, "/usr/local/lib/unit-net-cap")
-from main import main
+from unit_net_cap.main import main
 
 if __name__ == "__main__":
     sys.exit(main())
