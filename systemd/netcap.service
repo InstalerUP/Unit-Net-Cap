@@ -1,0 +1,15 @@
+[Unit]
+Description=Unit Net Cap Traffic Monitor and Quota Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/netcap daemon
+Restart=always
+RestartSec=5
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
