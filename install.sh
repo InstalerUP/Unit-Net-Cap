@@ -63,7 +63,7 @@ do_install_or_update() {
         echo "Installing from local directory: $src_root"
     else
         tmp_dir="$(mktemp -d)"
-        trap 'rm -rf "$tmp_dir"' EXIT
+        trap '[ -n "${tmp_dir:-}" ] && rm -rf "$tmp_dir"' EXIT
         echo "Downloading ${REPO_OWNER}/${REPO_NAME} (${REPO_BRANCH})..."
         curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$tmp_dir"
         src_root="$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
