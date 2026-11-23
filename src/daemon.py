@@ -263,14 +263,20 @@ def run_poll_cycle(state: dict[str, Any]) -> dict[str, Any]:
             limit_bytes = gb_to_bytes(limit_gb)
             used_bytes = _target_metric_bytes(target)
             if used_bytes >= limit_bytes:
-                if t_type == "systemd":
-                    if block_unit(name):
-                        target["blocked_by_quota"] = True
-                elif t_type == "docker":
-                    ok, prev_policy = block_container(name)
-                    if ok:
-                        target["original_restart_policy"] = prev_policy
-                        target["blocked_by_quota"] = True
+                if not target.get("blocked_by_quota"):
+                    if t_type == "systemd":
+                        if block_unit(name):
+                            target["blocked_by_quota"] = True
+                    elif t_type == "docker":
+                        ok, prev_policy = block_container(name)
+                        if ok:
+                            target["original_restart_policy"] = prev_policy
+                            target["blocked_by_quota"] = True
+                else:
+                    enforce_unit_blocked(name) if t_type == "systemd" else enforce_container_blocked(name)
+            else:
+                if target.get("blocked_by_quota"):
+                    _restore_target(target)
 
     return state
 
