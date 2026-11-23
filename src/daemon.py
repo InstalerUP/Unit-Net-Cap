@@ -8,7 +8,9 @@ from typing import Any
 from .config import DEFAULT_POLL_INTERVAL_SEC, gb_to_bytes
 from .docker_ctrl import (
     block_container,
+    docker_container_exists,
     enforce_container_blocked,
+    is_docker_available,
     read_all_containers_net_bytes,
     restore_container,
 )
@@ -22,10 +24,13 @@ from .storage import (
 )
 from .systemd_ctrl import (
     block_unit,
+    daemon_reload,
     enforce_unit_blocked,
     is_protected_unit,
     read_unit_ip_bytes,
+    remove_ip_accounting_dropin,
     restore_unit,
+    systemd_unit_exists,
 )
 
 _STOP_REQUESTED = False
@@ -71,6 +76,30 @@ def run_poll_cycle(state: dict[str, Any]) -> dict[str, Any]:
         to_restore = reset_month_counters(state)
         _restore_quota_blocked_targets(to_restore)
 
+    # 1.5. Prune targets whose systemd unit or Docker container no longer exists
+    targets: dict[str, dict[str, Any]] = state.setdefault("targets", {})
+    removed_any = False
+
+    for key in list(targets.keys()):
+        target = targets[key]
+        t_type = target.get("type")
+        name = str(target.get("name", ""))
+        if not name:
+            targets.pop(key, None)
+            removed_any = True
+            continue
+
+        if t_type == "systemd" and not systemd_unit_exists(name):
+            remove_ip_accounting_dropin(name)
+            targets.pop(key, None)
+            removed_any = True
+        elif t_type == "docker" and is_docker_available() and not docker_container_exists(name):
+            targets.pop(key, None)
+            removed_any = True
+
+    if removed_any:
+        daemon_reload()
+
     # 2. Update system network interfaces
     iface_counters = read_interface_counters()
     interfaces_state: dict[str, dict[str, int]] = state.setdefault("interfaces", {})
@@ -94,7 +123,6 @@ def run_poll_cycle(state: dict[str, Any]) -> dict[str, Any]:
         entry["last_tx_raw"] = new_tx_raw
 
     # 3. Fetch Docker stats once per cycle if any docker target exists
-    targets: dict[str, dict[str, Any]] = state.setdefault("targets", {})
     has_docker = any(t.get("type") == "docker" for t in targets.values())
     docker_stats = read_all_containers_net_bytes() if has_docker else {}
 

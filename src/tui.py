@@ -16,6 +16,7 @@ from .config import (
     VALID_MODES,
     bytes_to_gb,
     format_bytes,
+    parse_limit_gb,
 )
 from .docker_ctrl import (
     get_container_state,
@@ -139,10 +140,10 @@ def _render_main_screen(state: dict[str, Any]) -> None:
     # Monitored targets table
     print(f" {_CYAN}[ MONITORED TARGETS ]{_RESET}")
     print(
-        f"  {'ID':<3} {'Type':<9} {'Name':<20} {'In':<9} {'Out':<9} "
+        f"  {'ID':<3} {'Type':<9} {'Name':<20} {'Mode':<8} {'In':<9} {'Out':<9} "
         f"{'Total':<9} {'Limit':<8} {'Used%':<6} {'Status'}"
     )
-    print("  " + "-" * 82)
+    print("  " + "-" * 91)
 
     targets = state.get("targets", {})
     sorted_keys = sorted(targets.keys())
@@ -153,6 +154,7 @@ def _render_main_screen(state: dict[str, Any]) -> None:
             t = targets[key]
             t_type = "[SYSTEMD]" if t.get("type") == "systemd" else "[DOCKER]"
             name = str(t.get("name", ""))[:20]
+            mode = str(t.get("mode", DEFAULT_MODE))[:8]
             rx = int(t.get("rx_month_bytes", 0))
             tx = int(t.get("tx_month_bytes", 0))
             total = rx + tx
@@ -168,7 +170,7 @@ def _render_main_screen(state: dict[str, Any]) -> None:
                 pct_str = "-"
 
             print(
-                f"  {idx:<3} {t_type:<9} {name:<20} {format_bytes(rx):<9} {format_bytes(tx):<9} "
+                f"  {idx:<3} {t_type:<9} {name:<20} {mode:<8} {format_bytes(rx):<9} {format_bytes(tx):<9} "
                 f"{format_bytes(total):<9} {limit_str:<8} {pct_str:<6} {status_str}"
             )
 
@@ -188,13 +190,9 @@ def _prompt_limit_gb(default_gb: float | None = None) -> float | None:
     raw = input(f" > Enter monthly traffic limit in GB (0 = Monitor only){hint}: ").strip()
     if not raw and default_gb is not None:
         return default_gb
-    try:
-        val = float(raw.replace(",", "."))
-    except ValueError:
-        print(" [!] Invalid number.")
-        return None
-    if val < 0:
-        print(" [!] Limit cannot be negative.")
+    val = parse_limit_gb(raw)
+    if val is None:
+        print(" [!] Invalid limit value.")
         return None
     return val
 

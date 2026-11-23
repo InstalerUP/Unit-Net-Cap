@@ -1,9 +1,10 @@
 """Configuration constants, blacklists, and formatting helpers."""
-
+import math
 from pathlib import Path
 
 APP_NAME = "Unit Net Cap"
 CLI_NAME = "netcap"
+MAX_LIMIT_GB = 1_000_000_000.0
 
 # System paths
 STATE_DIR = Path("/var/lib/unit-net-cap")
@@ -97,3 +98,25 @@ def gb_to_bytes(gb_value: float) -> int:
 def bytes_to_gb(num_bytes: int) -> float:
     """Convert integer bytes to GB (1024-based)."""
     return max(0, num_bytes) / BYTES_PER_GB
+
+def parse_limit_gb(raw_value: str | float | int) -> float | None:
+    """Safely parse limit in GB. Rejects non-numeric text, NaN/inf, negatives, and huge values."""
+    if isinstance(raw_value, bool):
+        return None
+    if isinstance(raw_value, (int, float)):
+        val = float(raw_value)
+    else:
+        text = str(raw_value).strip().replace(",", ".")
+        if not text:
+            return None
+        # Reject huge exponent notation like 1e1000000 or 10**10000000000000
+        if "e" in text.lower() or "**" in text or "^" in text:
+            return None
+        try:
+            val = float(text)
+        except (ValueError, OverflowError):
+            return None
+
+    if not math.isfinite(val) or val < 0.0 or val > MAX_LIMIT_GB:
+        return None
+    return val

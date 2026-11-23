@@ -25,6 +25,7 @@ from .config import (
     bytes_to_gb,
     format_bytes,
     gb_to_bytes,
+    parse_limit_gb,
 )
 from .docker_ctrl import (
     get_container_state,
@@ -170,14 +171,15 @@ def _cmd_status(args: argparse.Namespace) -> int:
         print("  (no monitored targets)")
     else:
         print(
-            f"  {'Type':<9} {'Name':<24} {'In':<10} {'Out':<10} "
+            f"  {'Type':<9} {'Name':<24} {'Mode':<8} {'In':<10} {'Out':<10} "
             f"{'Total':<10} {'Limit':<8} {'Used%':<6} {'Status'}"
         )
-        print("  " + "-" * 82)
+        print("  " + "-" * 91)
         for key in sorted(targets.keys()):
             t = targets[key]
             t_type = str(t.get("type", "")).upper()
             name = str(t.get("name", ""))
+            mode = str(t.get("mode", DEFAULT_MODE))
             rx = int(t.get("rx_month_bytes", 0))
             tx = int(t.get("tx_month_bytes", 0))
             total = rx + tx
@@ -193,7 +195,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
                 pct_str = "-"
 
             print(
-                f"  {t_type:<9} {name:<24} {format_bytes(rx):<10} {format_bytes(tx):<10} "
+                f"  {t_type:<9} {name:<24} {mode:<8} {format_bytes(rx):<10} {format_bytes(tx):<10} "
                 f"{format_bytes(total):<10} {limit_str:<8} {pct_str:<6} {status}"
             )
 
@@ -202,8 +204,9 @@ def _cmd_status(args: argparse.Namespace) -> int:
 
 def _cmd_add(args: argparse.Namespace) -> int:
     """Handle 'netcap add <name> --limit <GB> ...'."""
-    if args.limit < 0:
-        print("Error: --limit must be >= 0.", file=sys.stderr)
+    limit_gb = parse_limit_gb(args.limit)
+    if limit_gb is None:
+        print("Error: invalid --limit value.", file=sys.stderr)
         return 1
 
     resolved = _detect_new_target_type(args.name, args.type)
@@ -248,6 +251,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
         "last_tx_raw": 0,
         "blocked_by_quota": False,
         "original_restart_policy": None,
+        "limit_gb": limit_gb,
     }
 
     save_state(state)
@@ -260,9 +264,12 @@ def _cmd_set(args: argparse.Namespace) -> int:
     if args.limit is None and args.mode is None:
         print("Error: specify at least --limit or --mode.", file=sys.stderr)
         return 1
+    parsed_limit: float | None = None
     if args.limit is not None and args.limit < 0:
-        print("Error: --limit must be >= 0.", file=sys.stderr)
-        return 1
+        parsed_limit = parse_limit_gb(args.limit)
+        if parsed_limit is None:
+            print("Error: --limit must be >= 0.", file=sys.stderr)
+            return 1
 
     state = load_state()
     key = _resolve_target_key(state, args.name, args.type)
@@ -271,9 +278,9 @@ def _cmd_set(args: argparse.Namespace) -> int:
         return 1
 
     target = state["targets"][key]
-    if args.limit is not None:
-        target["limit_gb"] = float(args.limit)
-        if float(args.limit) == 0.0:
+    if parsed_limit is not None:
+        target["limit_gb"] = parsed_limit
+        if parsed_limit == 0.0:
             target["blocked_by_quota"] = False
     if args.mode is not None:
         target["mode"] = args.mode

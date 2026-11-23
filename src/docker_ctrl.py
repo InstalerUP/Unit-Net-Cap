@@ -179,3 +179,12 @@ def restore_container(container_name: str, previous_policy: str | None) -> bool:
         _run_docker(["update", f"--restart={policy}", container_name], timeout=15)
     rc, _, _ = _run_docker(["start", container_name], timeout=30)
     return rc == 0
+
+def docker_container_exists(container_name: str) -> bool:
+    """Return True if container exists in Docker (running, stopped, or exited)."""
+    if not is_docker_available():
+        return False
+    clean = container_name.strip()
+    if not clean:
+        return False
+    return get_container_state(clean) is not None

@@ -241,3 +241,17 @@ def restore_unit(unit_name: str) -> bool:
         return False
     rc, _, _ = _run_systemctl(["enable", "--now", unit_name], timeout=30)
     return rc == 0
+
+def systemd_unit_exists(unit_name: str) -> bool:
+    """Return True if unit exists in systemd (loaded or has unit file)."""
+    clean = unit_name.strip()
+    if not clean:
+        return False
+    code, out, _ = _run_cmd(["systemctl", "cat", clean])
+    if code == 0 and out.strip():
+        return True
+    # Fallback: check if unit is known in list-unit-files or list-units
+    for u in list_systemd_units(include_hidden=True):
+        if u.get("name") == clean:
+            return True
+    return False
