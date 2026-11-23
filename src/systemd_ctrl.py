@@ -247,7 +247,7 @@ def systemd_unit_exists(unit_name: str) -> bool:
     clean = unit_name.strip()
     if not clean:
         return False
-    code, out, _ = _run_cmd(["systemctl", "cat", clean])
+    code, out, _ = _run_systemctl(["cat", clean])
     if code == 0 and out.strip():
         return True
     # Fallback: check if unit is known in list-unit-files or list-units
