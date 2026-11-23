@@ -68,6 +68,90 @@ def _restore_quota_blocked_targets(targets_to_restore: list[dict[str, Any]]) -> 
         elif t_type == "docker":
             restore_container(name, item.get("original_restart_policy"))
 
+def _restore_target(target: dict[str, Any]) -> None:
+    """Restore autostart and running state for a single quota-blocked target."""
+    t_type = target.get("type")
+    name = str(target.get("name", ""))
+    if not name:
+        return
+    if t_type == "systemd":
+        if not is_protected_unit(name):
+            restore_unit(name)
+    elif t_type == "docker":
+        restore_container(name, target.get("original_restart_policy"))
+    target["blocked_by_quota"] = False
+    target["original_restart_policy"] = None
+
+def apply_enforcement(state: dict[str, Any]) -> dict[str, Any]:
+    """Run scheduled reset, prune missing targets, and enforce or lift quota blocks."""
+    # 1. Scheduled monthly reset
+    if is_reset_due(state):
+        to_restore = reset_month_counters(state)
+        _restore_quota_blocked_targets(to_restore)
+
+    # 2. Prune targets whose systemd unit or Docker container no longer exists
+    targets: dict[str, dict[str, Any]] = state.setdefault("targets", {})
+    removed_any = False
+
+    for key in list(targets.keys()):
+        target = targets[key]
+        t_type = target.get("type")
+        name = str(target.get("name", ""))
+        if not name:
+            targets.pop(key, None)
+            removed_any = True
+            continue
+
+        if t_type == "systemd" and not systemd_unit_exists(name):
+            remove_ip_accounting_dropin(name)
+            targets.pop(key, None)
+            removed_any = True
+        elif t_type == "docker" and is_docker_available() and not docker_container_exists(name):
+            targets.pop(key, None)
+            removed_any = True
+
+    if removed_any:
+        daemon_reload()
+
+    # 3. Enforce limits or restore targets when limit is removed / raised
+    for target in targets.values():
+        t_type = target.get("type")
+        name = str(target.get("name", ""))
+        if not name:
+            continue
+
+        if t_type == "systemd" and is_protected_unit(name):
+            continue
+
+        limit_gb = float(target.get("limit_gb", 0.0) or 0.0)
+        if limit_gb <= 0.0:
+            if target.get("blocked_by_quota"):
+                _restore_target(target)
+            continue
+
+        limit_bytes = gb_to_bytes(limit_gb)
+        used_bytes = _target_metric_bytes(target)
+
+        if used_bytes >= limit_bytes:
+            if not target.get("blocked_by_quota"):
+                if t_type == "systemd":
+                    if block_unit(name):
+                        target["blocked_by_quota"] = True
+                elif t_type == "docker":
+                    ok, prev_policy = block_container(name)
+                    if ok:
+                        target["original_restart_policy"] = prev_policy
+                        target["blocked_by_quota"] = True
+            else:
+                if t_type == "systemd":
+                    enforce_unit_blocked(name)
+                elif t_type == "docker":
+                    enforce_container_blocked(name)
+        else:
+            if target.get("blocked_by_quota"):
+                _restore_target(target)
+
+    return state
 
 def run_poll_cycle(state: dict[str, Any]) -> dict[str, Any]:
     """Execute a single monitoring and enforcement cycle."""
@@ -138,12 +222,16 @@ def run_poll_cycle(state: dict[str, Any]) -> dict[str, Any]:
             continue
 
         # If already blocked by quota, keep it stopped and disabled
-        if target.get("blocked_by_quota"):
-            if t_type == "systemd":
-                enforce_unit_blocked(name)
-            elif t_type == "docker":
-                enforce_container_blocked(name)
-            continue
+        limit_gb = float(target.get("limit_gb", 0.0) or 0.0)
+        if limit_gb <= 0.0:
+            if target.get("blocked_by_quota"):
+                if t_type == "systemd":
+                    restore_unit(name)
+                elif t_type == "docker":
+                    restore_container(name, target.get("original_restart_policy"))
+                    target["blocked_by_quota"] = False
+                    target["original_restart_policy"] = None
+                continue
 
         # Read current raw counters
         raw_pair: tuple[int, int] | None = None

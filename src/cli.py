@@ -48,7 +48,9 @@ from .systemd_ctrl import (
     restart_unit_if_active,
     restore_unit,
 )
-
+from .daemon import (
+    apply_enforcement,
+)
 
 def _target_metric_bytes(target: dict[str, Any]) -> int:
     """Return traffic bytes matching target's mode."""
@@ -254,6 +256,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
         "limit_gb": limit_gb,
     }
 
+    state = apply_enforcement(state)
     save_state(state)
     print(f"Added [{t_type}] {norm_name} (limit: {float(args.limit):g} GB, mode: {mode}).")
     return 0
@@ -285,6 +288,7 @@ def _cmd_set(args: argparse.Namespace) -> int:
     if args.mode is not None:
         target["mode"] = args.mode
 
+    state = apply_enforcement(state)
     save_state(state)
     print(f"Updated {key}: limit={target['limit_gb']:g} GB, mode={target['mode']}.")
     return 0
@@ -306,6 +310,7 @@ def _cmd_remove(args: argparse.Namespace) -> int:
 
         daemon_reload()
 
+    state = apply_enforcement(state)
     save_state(state)
     print(f"Removed {key}.")
     return 0
@@ -321,6 +326,7 @@ def _cmd_reset(args: argparse.Namespace) -> int:
                 restore_unit(str(item.get("name", "")))
             elif item.get("type") == "docker":
                 restore_container(str(item.get("name", "")), item.get("original_restart_policy"))
+        state = apply_enforcement(state)
         save_state(state)
         print("All monthly counters reset.")
         return 0
@@ -343,6 +349,7 @@ def _cmd_reset(args: argparse.Namespace) -> int:
         elif target.get("type") == "docker":
             restore_container(str(target.get("name", "")), target.get("original_restart_policy"))
 
+    state = apply_enforcement(state)
     save_state(state)
     print(f"Counter reset for {key}.")
     return 0
@@ -384,6 +391,7 @@ def _cmd_config(args: argparse.Namespace) -> int:
         print(f"reset_day         = {settings.get('reset_day', DEFAULT_RESET_DAY)}")
         return 0
 
+    state = apply_enforcement(state)
     save_state(state)
     print("Configuration saved.")
     return 0
