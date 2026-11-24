@@ -42,6 +42,7 @@ sudo bash /usr/local/lib/unit-net-cap/unit_net_cap/install.sh --uninstall
 
 ## 💻 Terminal User Interface (TUI)
 `netcap` — launches the interactive text-based interface (`sudo` required).
+<img width="806" height="438" alt="screenshot_1" src="https://github.com/user-attachments/assets/19bea71b-f718-4f4b-b7e6-5aebcb2420f6" />
 
 ## ⌨️ CLI Commands Reference
 - `netcap status` — view application and traffic status.
