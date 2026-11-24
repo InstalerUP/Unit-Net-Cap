@@ -56,11 +56,22 @@ def _clear_screen() -> None:
     if sys.stdout.isatty():
         print("\033[2J\033[H", end="", flush=True)
 
+def _safe_input(prompt: str = "") -> str:
+    """Read a line from stdin without crashing on invalid UTF-8 bytes."""
+    try:
+        return_safe_input(prompt)
+    except UnicodeDecodeError:
+        try:
+            sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+        print("\n [!] Invalid UTF-8 byte sequence in_safe_input ignored.")
+        return ""
 
 def _pause(message: str = "Press Enter to continue...") -> None:
     """Pause until user presses Enter."""
     try:
-        input(f"\n{message}")
+       _safe_input(f"\n{message}")
     except (EOFError, KeyboardInterrupt):
         pass
 
@@ -187,7 +198,7 @@ def _render_main_screen(state: dict[str, Any]) -> None:
 def _prompt_limit_gb(default_gb: float | None = None) -> float | None:
     """Prompt user for limit in GB (0 = monitor only). Returns None if invalid."""
     hint = f" (current {default_gb:g} GB)" if default_gb is not None else ""
-    raw = input(f" > Enter monthly traffic limit in GB (0 = Monitor only){hint}: ").strip()
+    raw =_safe_input(f" > Enter monthly traffic limit in GB (0 = Monitor only){hint}: ").strip()
     if not raw and default_gb is not None:
         return default_gb
     val = parse_limit_gb(raw)
@@ -199,7 +210,7 @@ def _prompt_limit_gb(default_gb: float | None = None) -> float | None:
 
 def _prompt_mode(default_mode: str) -> str | None:
     """Prompt user for counting mode: 1=both, 2=egress, 3=ingress."""
-    raw = input(
+    raw =_safe_input(
         f" > Select counting mode [1: Both (In+Out), 2: Egress (Out), 3: Ingress (In)] "
         f"(default {default_mode}): "
     ).strip().lower()
@@ -268,7 +279,7 @@ def _screen_add_target(state: dict[str, Any]) -> None:
         print()
         print("-" * 82)
         print("  [A] Toggle hidden systemd units   [0] Back to main menu")
-        choice = input("\n Enter number to add (or A / 0): ").strip()
+        choice =_safe_input("\n Enter number to add (or A / 0): ").strip()
 
         if choice == "0":
             return
@@ -316,7 +327,7 @@ def _screen_add_target(state: dict[str, Any]) -> None:
                 _pause()
                 continue
             if selected["state"] == "active":
-                ans = input(f" > Restart '{name}' now to activate IP accounting? [Y/n]: ").strip().lower()
+                ans =_safe_input(f" > Restart '{name}' now to activate IP accounting? [Y/n]: ").strip().lower()
                 if ans in ("", "y", "yes"):
                     ok, msg = restart_unit_if_active(name)
                     print(f" [{'OK' if ok else '!'}] {msg}")
@@ -364,7 +375,7 @@ def _pick_monitored_target(state: dict[str, Any], title: str) -> tuple[str, dict
         print(f"  {idx}) {badge:<10} {t.get('name')}  (Limit: {float(t.get('limit_gb', 0)):g} GB, Mode: {t.get('mode')})")
     print("  0) Cancel")
 
-    raw = input("\n Select target number: ").strip()
+    raw =_safe_input("\n Select target number: ").strip()
     if raw == "0" or not raw:
         return None
     if not raw.isdigit():
@@ -419,7 +430,7 @@ def _screen_remove_target(state: dict[str, Any]) -> None:
         return
     key, target = picked
 
-    ans = input(f" > Remove '{target.get('name')}' from monitoring? [y/N]: ").strip().lower()
+    ans =_safe_input(f" > Remove '{target.get('name')}' from monitoring? [y/N]: ").strip().lower()
     if ans not in ("y", "yes"):
         print(" Cancelled.")
         _pause()
@@ -445,7 +456,7 @@ def _screen_reset_counters(state: dict[str, Any]) -> None:
     print("  2) Reset ALL counters (interfaces & targets)")
     print("  0) Back")
 
-    choice = input("\n Select option [0-2]: ").strip()
+    choice =_safe_input("\n Select option [0-2]: ").strip()
     if choice == "0":
         return
     if choice == "1":
@@ -464,7 +475,7 @@ def _screen_reset_counters(state: dict[str, Any]) -> None:
         print(f" [OK] Counter reset for '{target.get('name')}'.")
         _pause()
     elif choice == "2":
-        ans = input(" > Reset ALL monthly counters now? [y/N]: ").strip().lower()
+        ans =_safe_input(" > Reset ALL monthly counters now? [y/N]: ").strip().lower()
         if ans not in ("y", "yes"):
             print(" Cancelled.")
             _pause()
@@ -497,11 +508,11 @@ def _screen_settings(state: dict[str, Any]) -> None:
         print(f"  3) Default mode       : {def_mode} (both / egress / ingress)")
         print("  0) Back to main menu")
 
-        choice = input("\n Select setting to change [0-3]: ").strip()
+        choice =_safe_input("\n Select setting to change [0-3]: ").strip()
         if choice == "0":
             return
         if choice == "1":
-            raw = input(f" > Enter poll interval in seconds ({MIN_POLL_INTERVAL_SEC}..{MAX_POLL_INTERVAL_SEC}): ").strip()
+            raw =_safe_input(f" > Enter poll interval in seconds ({MIN_POLL_INTERVAL_SEC}..{MAX_POLL_INTERVAL_SEC}): ").strip()
             try:
                 val = int(raw)
                 if MIN_POLL_INTERVAL_SEC <= val <= MAX_POLL_INTERVAL_SEC:
@@ -514,7 +525,7 @@ def _screen_settings(state: dict[str, Any]) -> None:
                 print(" [!] Enter an integer.")
             _pause()
         elif choice == "2":
-            raw = input(f" > Enter reset day of month ({MIN_RESET_DAY}..{MAX_RESET_DAY}): ").strip()
+            raw =_safe_input(f" > Enter reset day of month ({MIN_RESET_DAY}..{MAX_RESET_DAY}): ").strip()
             try:
                 val = int(raw)
                 if MIN_RESET_DAY <= val <= MAX_RESET_DAY:
@@ -541,7 +552,7 @@ def run_tui() -> int:
         state = load_state()
         _render_main_screen(state)
         try:
-            choice = input(" Select action [0-6]: ").strip()
+            choice =_safe_input(" Select action [0-6]: ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
