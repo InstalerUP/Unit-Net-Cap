@@ -268,7 +268,7 @@ def _cmd_set(args: argparse.Namespace) -> int:
         print("Error: specify at least --limit or --mode.", file=sys.stderr)
         return 1
     parsed_limit: float | None = None
-    if args.limit is not None and args.limit < 0:
+    if args.limit is not None:
         parsed_limit = parse_limit_gb(args.limit)
         if parsed_limit is None:
             print("Error: --limit must be >= 0.", file=sys.stderr)
@@ -283,8 +283,6 @@ def _cmd_set(args: argparse.Namespace) -> int:
     target = state["targets"][key]
     if parsed_limit is not None:
         target["limit_gb"] = parsed_limit
-        if parsed_limit == 0.0:
-            target["blocked_by_quota"] = False
     if args.mode is not None:
         target["mode"] = args.mode
 

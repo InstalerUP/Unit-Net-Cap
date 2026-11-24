@@ -201,8 +201,8 @@ def is_reset_due(state: dict[str, Any], today: date | None = None) -> bool:
 
 def reset_month_counters(state: dict[str, Any], today: date | None = None) -> list[dict[str, Any]]:
     """
-    Reset monthly counters for interfaces and targets, clear blocked_by_quota flags,
-    and return list of targets that were blocked by quota (so caller can restore them).
+    Reset monthly counters and return quota-blocked targets for restoration.
+    The block marker remains until the target has actually been restored.
     """
     for iface in state.get("interfaces", {}).values():
         iface["rx_month_bytes"] = 0
@@ -213,15 +213,13 @@ def reset_month_counters(state: dict[str, Any], today: date | None = None) -> li
         target["rx_month_bytes"] = 0
         target["tx_month_bytes"] = 0
         if target.get("blocked_by_quota"):
-            to_restore.append(dict(target))
-            target["blocked_by_quota"] = False
+            to_restore.append(target)
 
     state["last_reset_period"] = current_period_str(today)
     return to_restore
 
 
 def reset_target_counter(target: dict[str, Any]) -> None:
-    """Reset monthly counter for a single target while keeping baseline raw values."""
+    """Reset a target counter while keeping its raw baseline and block marker."""
     target["rx_month_bytes"] = 0
     target["tx_month_bytes"] = 0
-    target["blocked_by_quota"] = False

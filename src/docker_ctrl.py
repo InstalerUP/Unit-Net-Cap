@@ -158,7 +158,9 @@ def block_container(container_name: str) -> tuple[bool, str]:
     Returns (success, previous_restart_policy).
     """
     prev_policy = get_container_restart_policy(container_name)
-    _run_docker(["update", "--restart=no", container_name], timeout=15)
+    update_rc, _, _ = _run_docker(["update", "--restart=no", container_name], timeout=15)
+    if update_rc != 0:
+        return False, prev_policy
     rc, _, _ = _run_docker(["stop", container_name], timeout=30)
     return rc == 0, prev_policy
 
@@ -187,4 +189,5 @@ def docker_container_exists(container_name: str) -> bool:
     clean = container_name.strip()
     if not clean:
         return False
-    return get_container_state(clean) is not None
+    rc, _, _ = _run_docker(["inspect", clean], timeout=10)
+    return rc == 0

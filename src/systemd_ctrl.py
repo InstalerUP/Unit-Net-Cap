@@ -236,10 +236,17 @@ def enforce_unit_blocked(unit_name: str) -> None:
 
 
 def restore_unit(unit_name: str) -> bool:
-    """Enable autostart and start unit after quota reset."""
+    """Enable autostart and start unit after quota reset.
+
+    Static units cannot be enabled, but they still must be started again after
+    quota blocking.
+    """
     if is_protected_unit(unit_name):
         return False
     rc, _, _ = _run_systemctl(["enable", "--now", unit_name], timeout=30)
+    if rc == 0:
+        return True
+    rc, _, _ = _run_systemctl(["start", unit_name], timeout=30)
     return rc == 0
 
 def systemd_unit_exists(unit_name: str) -> bool:

@@ -402,9 +402,11 @@ def _screen_edit_target(state: dict[str, Any]) -> None:
 
     target["limit_gb"] = new_limit
     target["mode"] = new_mode
-    if new_limit == 0.0:
-        target["blocked_by_quota"] = False
+    # Apply the new quota immediately so a target blocked by the old quota is
+    # restored without waiting for the daemon's next polling cycle.
+    from .daemon import apply_enforcement
 
+    state = apply_enforcement(state)
     save_state(state)
     print(" [OK] Target updated.")
     _pause()
