@@ -42,6 +42,7 @@ sudo bash /usr/local/lib/unit-net-cap/unit_net_cap/install.sh --uninstall
 
 ## 💻 Текстовый интерфейс (TUI)
 `netcap` — вызов текстового интерактивного интерфейса (требуется `sudo`).
+<img width="806" height="438" alt="screenshot_1" src="https://github.com/user-attachments/assets/19bea71b-f718-4f4b-b7e6-5aebcb2420f6" />
 
 ## ⌨️ Описание CLI-команд
 - `netcap status` — просмотр статуса приложений и трафика.
