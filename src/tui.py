@@ -7,6 +7,7 @@ from typing import Any
 
 from .config import (
     DEFAULT_MODE,
+    DEFAULT_INTERFACE_VIEW_MODE,
     DEFAULT_POLL_INTERVAL_SEC,
     DEFAULT_RESET_DAY,
     MAX_POLL_INTERVAL_SEC,
@@ -14,6 +15,7 @@ from .config import (
     MIN_POLL_INTERVAL_SEC,
     MIN_RESET_DAY,
     VALID_MODES,
+    VALID_INTERFACE_VIEW_MODES,
     bytes_to_gb,
     format_bytes,
     parse_limit_gb,
@@ -39,6 +41,7 @@ from .systemd_ctrl import (
     restart_unit_if_active,
     restore_unit,
 )
+from .net_proc import visible_interface_names
 
 # ANSI colors (gracefully disabled if NO_COLOR or dumb terminal)
 _USE_COLOR = bool(sys.stdout.isatty() and os.environ.get("TERM") != "dumb" and not os.environ.get("NO_COLOR"))
@@ -128,23 +131,29 @@ def _render_main_screen(state: dict[str, Any]) -> None:
         daemon_str = f"{_RED}STOPPED (every {interval} s){_RESET}"
 
     print("=" * 82)
+    view_mode = str(settings.get("interface_view_mode", DEFAULT_INTERFACE_VIEW_MODE))
     print(f"  {_BOLD}UNIT NET CAP{_RESET} | Daemon: {daemon_str} | Reset Day: {reset_day} | Next: {next_reset}")
     print("=" * 82)
     print()
 
     # System interfaces block
     print(f" {_CYAN}[ SYSTEM INTERFACES ]{_RESET}")
-    print(f"  {'Interface':<14} {'RX (In)':<12} {'TX (Out)':<12} {'Total':<12}")
-    print("  " + "-" * 52)
     interfaces = state.get("interfaces", {})
-    if not interfaces:
-        print("  No interface statistics collected yet.")
+    visible_interfaces = visible_interface_names(
+        set(interfaces), view_mode, settings.get("extra_interfaces", [])
+    )
+    print(f"  View: {view_mode}")
+    if not visible_interfaces:
+        print("  No matching interface statistics collected yet.")
     else:
-        for if_name in sorted(interfaces.keys()):
+        name_width = max(14, max(len(if_name) for if_name in visible_interfaces))
+        print(f"  {'Interface':<{name_width}} {'RX (In)':<12} {'TX (Out)':<12} {'Total':<12}")
+        print("  " + "-" * (name_width + 39))
+        for if_name in sorted(visible_interfaces):
             info = interfaces[if_name]
             rx = int(info.get("rx_month_bytes", 0))
             tx = int(info.get("tx_month_bytes", 0))
-            print(f"  {if_name:<14} {format_bytes(rx):<12} {format_bytes(tx):<12} {format_bytes(rx + tx):<12}")
+            print(f"  {if_name:<{name_width}} {format_bytes(rx):<12} {format_bytes(tx):<12} {format_bytes(rx + tx):<12}")
 
     print()
 
@@ -491,13 +500,58 @@ def _screen_reset_counters(state: dict[str, Any]) -> None:
         _pause()
 
 
+def _screen_extra_interfaces(state: dict[str, Any], settings: dict[str, Any]) -> None:
+    """Manage interfaces that are always visible in main view mode."""
+    while True:
+        extras: list[str] = settings.setdefault("extra_interfaces", [])
+        _clear_screen()
+        print("=" * 82)
+        print(f"  {_BOLD}EXTRA INTERFACES (always visible in main mode){_RESET}")
+        print("=" * 82)
+        if extras:
+            for index, interface in enumerate(extras, start=1):
+                print(f"  {index}) {interface}")
+        else:
+            print("  (none)")
+        print()
+        print("  A) Add interface     D) Delete interface     0) Back")
+        choice = _safe_input("\n Select action: ").strip().lower()
+        if choice == "0":
+            return
+        if choice == "a":
+            interface = _safe_input(" > Interface name: ").strip()
+            if not interface:
+                print(" [!] Interface name cannot be empty.")
+            elif interface in extras:
+                print(" [!] This interface is already listed.")
+            else:
+                extras.append(interface)
+                save_state(state)
+                print(f" [OK] Added '{interface}'.")
+            _pause()
+            continue
+        if choice == "d":
+            raw = _safe_input(" > Number to delete: ").strip()
+            if raw.isdigit() and 1 <= int(raw) <= len(extras):
+                interface = extras.pop(int(raw) - 1)
+                save_state(state)
+                print(f" [OK] Removed '{interface}'.")
+            else:
+                print(" [!] Enter a listed number.")
+            _pause()
+            continue
+        print(" [!] Select A, D, or 0.")
+        _pause()
+
+
 def _screen_settings(state: dict[str, Any]) -> None:
-    """Screen for global settings: polling interval, reset day, and default mode."""
+    """Screen for global and interface display settings."""
     while True:
         settings = state.setdefault("settings", {})
         interval = int(settings.get("poll_interval_sec", DEFAULT_POLL_INTERVAL_SEC))
         reset_day = int(settings.get("reset_day", DEFAULT_RESET_DAY))
         def_mode = str(settings.get("default_mode", DEFAULT_MODE))
+        interface_view_mode = str(settings.get("interface_view_mode", DEFAULT_INTERFACE_VIEW_MODE))
 
         _clear_screen()
         print("=" * 82)
@@ -506,9 +560,11 @@ def _screen_settings(state: dict[str, Any]) -> None:
         print(f"  1) Poll interval      : {interval} sec ({MIN_POLL_INTERVAL_SEC}..{MAX_POLL_INTERVAL_SEC})")
         print(f"  2) Monthly reset day  : {reset_day} ({MIN_RESET_DAY}..{MAX_RESET_DAY})")
         print(f"  3) Default mode       : {def_mode} (both / egress / ingress)")
+        print(f"  4) Interface view     : {interface_view_mode} (main / all)")
+        print(f"  5) Extra interfaces   : {len(settings.get('extra_interfaces', []))}")
         print("  0) Back to main menu")
 
-        choice = _safe_input("\n Select setting to change [0-3]: ").strip()
+        choice = _safe_input("\n Select setting to change [0-5]: ").strip()
         if choice == "0":
             return
         if choice == "1":
@@ -544,6 +600,14 @@ def _screen_settings(state: dict[str, Any]) -> None:
                 save_state(state)
                 print(" [OK] Default mode updated.")
             _pause()
+        elif choice == "4":
+            new_view_mode = "all" if interface_view_mode == "main" else "main"
+            settings["interface_view_mode"] = new_view_mode
+            save_state(state)
+            print(f" [OK] Interface view set to '{new_view_mode}'.")
+            _pause()
+        elif choice == "5":
+            _screen_extra_interfaces(state, settings)
 
 
 def run_tui() -> int:

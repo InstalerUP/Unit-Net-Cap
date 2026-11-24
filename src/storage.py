@@ -9,6 +9,7 @@ from typing import Any
 
 from .config import (
     DEFAULT_MODE,
+    DEFAULT_INTERFACE_VIEW_MODE,
     DEFAULT_POLL_INTERVAL_SEC,
     DEFAULT_RESET_DAY,
     MAX_POLL_INTERVAL_SEC,
@@ -18,6 +19,7 @@ from .config import (
     STATE_DIR,
     STATE_FILE,
     VALID_MODES,
+    VALID_INTERFACE_VIEW_MODES,
 )
 
 
@@ -35,6 +37,8 @@ def default_state(today: date | None = None) -> dict[str, Any]:
             "poll_interval_sec": DEFAULT_POLL_INTERVAL_SEC,
             "default_mode": DEFAULT_MODE,
             "reset_day": DEFAULT_RESET_DAY,
+            "interface_view_mode": DEFAULT_INTERFACE_VIEW_MODE,
+            "extra_interfaces": [],
         },
         "last_reset_period": current_period_str(today),
         "interfaces": {},
@@ -68,10 +72,26 @@ def _normalize_state(raw: Any) -> dict[str, Any]:
             reset_day = DEFAULT_RESET_DAY
         reset_day = max(MIN_RESET_DAY, min(MAX_RESET_DAY, reset_day))
 
+        interface_view_mode = settings.get("interface_view_mode", DEFAULT_INTERFACE_VIEW_MODE)
+        if interface_view_mode not in VALID_INTERFACE_VIEW_MODES:
+            interface_view_mode = DEFAULT_INTERFACE_VIEW_MODE
+
+        raw_extra_interfaces = settings.get("extra_interfaces", [])
+        extra_interfaces: list[str] = []
+        if isinstance(raw_extra_interfaces, list):
+            for interface in raw_extra_interfaces:
+                if not isinstance(interface, str):
+                    continue
+                clean_interface = interface.strip()
+                if clean_interface and clean_interface not in extra_interfaces:
+                    extra_interfaces.append(clean_interface)
+
         base["settings"] = {
             "poll_interval_sec": interval,
             "default_mode": mode,
             "reset_day": reset_day,
+            "interface_view_mode": interface_view_mode,
+            "extra_interfaces": extra_interfaces,
         }
 
     period = raw.get("last_reset_period")

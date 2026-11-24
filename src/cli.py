@@ -10,6 +10,7 @@ from typing import Any
 from . import __version__
 from .config import (
     DEFAULT_MODE,
+    DEFAULT_INTERFACE_VIEW_MODE,
     DEFAULT_POLL_INTERVAL_SEC,
     DEFAULT_RESET_DAY,
     INSTALL_BIN_FILE,
@@ -22,6 +23,7 @@ from .config import (
     STATE_DIR,
     STATE_FILE,
     VALID_MODES,
+    VALID_INTERFACE_VIEW_MODES,
     bytes_to_gb,
     format_bytes,
     gb_to_bytes,
@@ -51,6 +53,7 @@ from .systemd_ctrl import (
 from .daemon import (
     apply_enforcement,
 )
+from .net_proc import visible_interface_names
 
 def _target_metric_bytes(target: dict[str, Any]) -> int:
     """Return traffic bytes matching target's mode."""
@@ -150,19 +153,23 @@ def _cmd_status(args: argparse.Namespace) -> int:
     reset_day = settings.get("reset_day", DEFAULT_RESET_DAY)
     last_reset = state.get("last_reset_period", "-")
 
+    view_mode = "all" if args.all_interfaces else settings.get("interface_view_mode", DEFAULT_INTERFACE_VIEW_MODE)
+    extras = settings.get("extra_interfaces", [])
     print(f"UNIT NET CAP | Poll: every {interval} s | Reset day: {reset_day} | Last reset: {last_reset}")
     print()
     print("Interfaces:")
     interfaces = state.get("interfaces", {})
-    if not interfaces:
+    visible_interfaces = visible_interface_names(set(interfaces), view_mode, extras)
+    if not visible_interfaces:
         print("  (no interface data yet)")
     else:
-        for if_name in sorted(interfaces.keys()):
+        name_width = max(14, max(len(name) for name in visible_interfaces))
+        for if_name in sorted(visible_interfaces):
             info = interfaces[if_name]
             rx = int(info.get("rx_month_bytes", 0))
             tx = int(info.get("tx_month_bytes", 0))
             print(
-                f"  {if_name:<14} In: {format_bytes(rx):<10} "
+                f"  {if_name:<{name_width}} In: {format_bytes(rx):<10} "
                 f"Out: {format_bytes(tx):<10} Total: {format_bytes(rx + tx)}"
             )
 
@@ -354,7 +361,7 @@ def _cmd_reset(args: argparse.Namespace) -> int:
 
 
 def _cmd_config(args: argparse.Namespace) -> int:
-    """Handle 'netcap config [--interval ...] [--default-mode ...] [--reset-day ...]'."""
+    """Handle global monitoring and interface-view settings."""
     state = load_state()
     settings = state.setdefault("settings", {})
     changed = False
@@ -383,10 +390,35 @@ def _cmd_config(args: argparse.Namespace) -> int:
         settings["reset_day"] = int(args.reset_day)
         changed = True
 
+    if args.interface_view_mode is not None:
+        settings["interface_view_mode"] = args.interface_view_mode
+        changed = True
+
+    extra_interfaces = settings.setdefault("extra_interfaces", [])
+    if args.add_iface is not None:
+        interface = args.add_iface.strip()
+        if not interface:
+            print("Error: --add-iface cannot be empty.", file=sys.stderr)
+            return 1
+        if interface not in extra_interfaces:
+            extra_interfaces.append(interface)
+            changed = True
+
+    if args.remove_iface is not None:
+        interface = args.remove_iface.strip()
+        if not interface:
+            print("Error: --remove-iface cannot be empty.", file=sys.stderr)
+            return 1
+        if interface in extra_interfaces:
+            extra_interfaces.remove(interface)
+            changed = True
+
     if not changed:
         print(f"poll_interval_sec = {settings.get('poll_interval_sec', DEFAULT_POLL_INTERVAL_SEC)}")
         print(f"default_mode      = {settings.get('default_mode', DEFAULT_MODE)}")
         print(f"reset_day         = {settings.get('reset_day', DEFAULT_RESET_DAY)}")
+        print(f"interface_view_mode = {settings.get('interface_view_mode', DEFAULT_INTERFACE_VIEW_MODE)}")
+        print(f"extra_interfaces    = {', '.join(settings.get('extra_interfaces', [])) or '(none)'}")
         return 0
 
     state = apply_enforcement(state)
@@ -477,6 +509,7 @@ def build_parser() -> argparse.ArgumentParser:
     # status
     p_status = subparsers.add_parser("status", help="Show network interfaces and monitored targets.")
     p_status.add_argument("--json", action="store_true", help="Output state as JSON.")
+    p_status.add_argument("--all-interfaces", action="store_true", help="Show all saved interfaces for this command.")
 
     # add
     p_add = subparsers.add_parser("add", help="Add a systemd service or Docker container to monitoring.")
@@ -509,6 +542,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_config.add_argument("--interval", type=int, help="Polling interval in seconds (30..10800).")
     p_config.add_argument("--default-mode", choices=VALID_MODES, help="Default counting mode for new targets.")
     p_config.add_argument("--reset-day", type=int, help="Day of month for automatic reset (1..28).")
+    p_config.add_argument("--interface-view-mode", choices=VALID_INTERFACE_VIEW_MODES, help="Interface display mode.")
+    p_config.add_argument("--add-iface", metavar="NAME", help="Always show this interface in main mode.")
+    p_config.add_argument("--remove-iface", metavar="NAME", help="Remove an interface from the main-mode allow list.")
 
     # uninstall
     p_uninstall = subparsers.add_parser("uninstall", help="Uninstall Unit Net Cap and restore blocked targets.")

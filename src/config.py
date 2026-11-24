@@ -30,6 +30,9 @@ MIN_RESET_DAY = 1
 MAX_RESET_DAY = 28
 DEFAULT_RESET_DAY = 1
 
+VALID_INTERFACE_VIEW_MODES = ("main", "all")
+DEFAULT_INTERFACE_VIEW_MODE = "main"
+
 VALID_MODES = ("both", "egress", "ingress")
 DEFAULT_MODE = "both"
 
