@@ -150,6 +150,9 @@ def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
         if not name or name.lower() == "name":
             continue
         result[name] = parse_net_io_pair(net_io)
+        # Also map container name without hyphens/underscores or short ID if needed
+        # but exact name match is standard. Let's also add lowercase or sanitized variants if docker trims names
+        result[name.lower()] = result[name]
 
     return result
 
