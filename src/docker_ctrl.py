@@ -141,10 +141,12 @@ def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
         return result
 
     for line in out.splitlines():
-        if "|" not in line:
+        clean_line = "".join(ch for ch in line if ord(ch) >= 32 or ch == "\n")
+        if "|" not in clean_line:
             continue
-        name, net_io = line.split("|", 1)
-        name = name.strip()
+        parts = clean_line.split("|", 1)
+        name = parts[0].strip().lstrip("/")
+        net_io = parts[1].strip()
         if not name:
             continue
         result[name] = parse_net_io_pair(net_io)
