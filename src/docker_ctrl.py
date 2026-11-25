@@ -134,7 +134,7 @@ def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
 
     rc, out, _ = _run_docker(
         ["stats", "--no-stream", "--format", "{{.Name}}|{{.NetIO}}"],
-        timeout=30,
+        timeout=60,
     )
     result: dict[str, tuple[int, int]] = {}
     if rc != 0 or not out:
@@ -149,10 +149,9 @@ def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
         net_io = parts[1].strip()
         if not name or name.lower() == "name":
             continue
-        result[name] = parse_net_io_pair(net_io)
-        # Also map container name without hyphens/underscores or short ID if needed
-        # but exact name match is standard. Let's also add lowercase or sanitized variants if docker trims names
-        result[name.lower()] = result[name]
+        rx_b, tx_b = parse_net_io_pair(net_io)
+        result[name] = (rx_b, tx_b)
+        result[name.lower()] = (rx_b, tx_b)
 
     return result
 
