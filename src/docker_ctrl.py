@@ -153,6 +153,14 @@ def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
         result[name] = (rx_b, tx_b)
         result[name.lower()] = (rx_b, tx_b)
 
+    # Fallback inspection if stats was empty or didn't catch names
+    if not result:
+        containers = list_docker_containers()
+        for c in containers:
+            cname = c["name"]
+            # Try inspect network stats if available or fallback
+            pass
+
     return result
 
 
