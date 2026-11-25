@@ -133,19 +133,16 @@ def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
         return {}
 
     rc, out, _ = _run_docker(
-        ["stats", "--no-stream", "--format", "table {{.Name}}|{{.NetIO}}"],
+        ["stats", "--no-stream", "--format", "{{.Name}}|{{.NetIO}}"],
         timeout=30,
     )
     result: dict[str, tuple[int, int]] = {}
     if rc != 0 or not out:
         return result
 
-    lines = out.splitlines()
-    for line in lines:
+    for line in out.splitlines():
         clean_line = "".join(ch for ch in line if ord(ch) >= 32 or ch == "\n").strip()
-        if not clean_line or clean_line.startswith("NAME") or clean_line.startswith("CONTAINER"):
-            continue
-        if "|" not in clean_line:
+        if not clean_line or "|" not in clean_line:
             continue
         parts = clean_line.split("|", 1)
         name = parts[0].strip().lstrip("/")
