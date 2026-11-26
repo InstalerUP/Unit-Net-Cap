@@ -204,17 +204,19 @@ def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
         timeout=15,
     )
     result: dict[str, tuple[int, int]] = {}
-    procfs_unavailable = inspect_rc != 0
+    procfs_unavailable = inspect_rc != 0 or not inspect_out
 
     if inspect_rc == 0 and inspect_out:
         for line in inspect_out.splitlines():
             parts = line.split("|", 2)
             if len(parts) != 3:
+                procfs_unavailable = True
                 continue
             name = parts[0].strip().lstrip("/")
             try:
                 pid = int(parts[1].strip())
             except ValueError:
+                procfs_unavailable = True
                 continue
             network_mode = parts[2].strip()
             if not name or network_mode == "host":
