@@ -26,12 +26,13 @@ curl -fsSL https://raw.githubusercontent.com/InstalerUP/unit-net-cap/main/instal
 <details>
   <summary><b>What the installation script</b> <code>install.sh</code> <b>does:</b></summary>
 
-1. Checks for superuser privileges and a `Python 3` interpreter.
-2. Downloads the latest version of the repository (or uses a local directory).
-3. Copies package files to `/usr/local/lib/unit-net-cap/unit_net_cap`.
-4. Creates the executable entry point `/usr/local/bin/netcap`.
-5. Installs the `systemd` service `netcap.service` to `/etc/systemd/system/netcap.service`.
-6. Starts and enables the background daemon via `systemctl enable --now netcap.service`.
+  - Checks for superuser privileges and a `Python 3` interpreter.
+  - Provides a choice of project branch (default is `main`).
+  - Downloads the latest version of the repository (or uses a local directory).
+  - Copies package files to `/usr/local/lib/unit-net-cap/unit_net_cap`.
+  - Creates the executable entry point `/usr/local/bin/netcap`.
+  - Installs the `systemd` service `netcap.service` to `/etc/systemd/system/netcap.service`.
+  - Starts and enables the background daemon via `systemctl enable --now netcap.service`.
 </details>
 
 ### Uninstallation

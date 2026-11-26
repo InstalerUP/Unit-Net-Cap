@@ -26,12 +26,13 @@ curl -fsSL https://raw.githubusercontent.com/InstalerUP/unit-net-cap/main/instal
 <details>
   <summary><b>Что делает скрипт установки</b> <code>install.sh</code>:</summary>
 
-  1. Проверяет наличие прав суперпользователя и интерпретатора `Python 3`.
-  2. Скачивает актуальную версию репозитория (или использует локальную директорию).
-  3. Копирует файлы пакета в `/usr/local/lib/unit-net-cap/unit_net_cap`.
-  4. Создает исполняемую точку входа `/usr/local/bin/netcap`.
-  5. Устанавливает системный `systemd`-сервис `netcap.service` в `/etc/systemd/system/netcap.service`.
-  6. Запускает и активирует фоновый демон через `systemctl enable --now netcap.service`.
+  - Проверяет наличие прав суперпользователя и интерпретатора `Python 3`.
+  - Предоставляет выбор ветки проекта (по умолчанию `main`).
+  - Скачивает актуальную версию репозитория (или использует локальную директорию).
+  - Копирует файлы пакета в `/usr/local/lib/unit-net-cap/unit_net_cap`.
+  - Создает исполняемую точку входа `/usr/local/bin/netcap`.
+  - Устанавливает системный `systemd`-сервис `netcap.service` в `/etc/systemd/system/netcap.service`.
+  - Запускает и активирует фоновый демон через `systemctl enable --now netcap.service`.
 </details>
 
 ### Удаление
