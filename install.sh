@@ -4,9 +4,17 @@ set -euo pipefail
 REPO_OWNER="${NETCAP_REPO_OWNER:-InstalerUP}"
 REPO_NAME="${NETCAP_REPO_NAME:-unit-net-cap}"
 
+has_tty() {
+    [ -t 0 ] || { [ -r /dev/tty ] && { : </dev/tty; } 2>/dev/null; }
+}
+
 if [ -z "${NETCAP_REPO_BRANCH:-}" ]; then
-    if [ -t 0 ] || [ -e /dev/tty ]; then
-        exec </dev/tty 2>/dev/null || true
+    if has_tty; then
+        tty_in="/dev/stdin"
+        if [ ! -t 0 ] && [ -r /dev/tty ]; then
+            tty_in="/dev/tty"
+        fi
+
         echo "=========================================="
         echo "  Unit Net Cap - Branch Selection"
         echo "=========================================="
@@ -14,13 +22,21 @@ if [ -z "${NETCAP_REPO_BRANCH:-}" ]; then
         echo "2) nightly - Nightly release / development"
         echo "3) Custom  - Enter branch name manually"
         echo "------------------------------------------"
-        read -rp "Select option [1-3] (default 1): " choice
+        read -rp "Select option [1-3] (default 1): " choice <"$tty_in" || choice=""
+        choice="${choice#"${choice%%[![:space:]]*}"}"
+        choice="${choice%"${choice##*[![:space:]]}"}"
+
         case "$choice" in
-            2)
+            ""|"1")
+                REPO_BRANCH="main"
+                ;;
+            "2")
                 REPO_BRANCH="nightly"
                 ;;
-            3)
-                read -rp "Enter GitHub branch name: " custom_branch
+            "3")
+                read -rp "Enter GitHub branch name: " custom_branch <"$tty_in" || custom_branch=""
+                custom_branch="${custom_branch#"${custom_branch%%[![:space:]]*}"}"
+                custom_branch="${custom_branch%"${custom_branch##*[![:space:]]}"}"
                 if [ -n "$custom_branch" ]; then
                     REPO_BRANCH="$custom_branch"
                 else
@@ -28,7 +44,7 @@ if [ -z "${NETCAP_REPO_BRANCH:-}" ]; then
                 fi
                 ;;
             *)
-                REPO_BRANCH="main"
+                REPO_BRANCH="$choice"
                 ;;
         esac
     else
@@ -38,14 +54,18 @@ else
     REPO_BRANCH="${NETCAP_REPO_BRANCH}"
 fi
 
+ARCHIVE_URL="https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_BRANCH}"
+
 echo "Checking branch '${REPO_BRANCH}' on GitHub..."
-HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" "https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_BRANCH}" || echo "000")"
+HTTP_CODE="$(curl -sS --connect-timeout 10 --max-time 20 -o /dev/null -w "%{http_code}" "$ARCHIVE_URL" || echo "000")"
+if [ "$HTTP_CODE" = "000" ]; then
+    echo "Error: Failed to reach GitHub while checking branch '${REPO_BRANCH}' (network/timeout error)." >&2
+    exit 1
+fi
 if [ "$HTTP_CODE" -ne 200 ]; then
     echo "Error: Branch '${REPO_BRANCH}' does not exist on GitHub (HTTP status: ${HTTP_CODE})." >&2
     exit 1
 fi
-
-ARCHIVE_URL="https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_BRANCH}"
 
 INSTALL_LIB_DIR="/usr/local/lib/unit-net-cap"
 INSTALL_PKG_DIR="${INSTALL_LIB_DIR}/unit_net_cap"
@@ -107,7 +127,7 @@ do_install_or_update() {
     else
         tmp_dir="$(mktemp -d)"
         echo "Downloading ${REPO_OWNER}/${REPO_NAME} (${REPO_BRANCH})..."
-        curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$tmp_dir"
+        curl -fsSL --connect-timeout 10 --max-time 120 "$ARCHIVE_URL" | tar -xz -C "$tmp_dir"
         src_root="$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
         if [ -z "$src_root" ] || [ ! -d "$src_root/src" ]; then
             echo "Error: failed to download or unpack repository archive." >&2
