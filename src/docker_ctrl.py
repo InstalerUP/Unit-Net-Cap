@@ -124,43 +124,115 @@ def parse_net_io_pair(net_io_str: str) -> tuple[int, int]:
     return _parse_size_to_bytes(left), _parse_size_to_bytes(right)
 
 
-def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
-    """
-    Read current (rx_bytes, tx_bytes) for all running containers via single 'docker stats --no-stream'.
-    Returns dict mapping container_name -> (rx_bytes, tx_bytes).
-    """
-    if not is_docker_available():
-        return {}
+def _read_netdev_counters(pid: int) -> tuple[int, int] | None:
+    """Read exact RX/TX byte counters from a container network namespace."""
+    if pid <= 0:
+        return None
+    rx_total = 0
+    tx_total = 0
+    found_interface = False
+    try:
+        with open(f"/proc/{pid}/net/dev", "r", encoding="utf-8") as handle:
+            lines = handle.readlines()[2:]
+    except (OSError, ValueError):
+        return None
 
+    for line in lines:
+        if ":" not in line:
+            continue
+        interface, values = line.rsplit(":", 1)
+        interface = interface.strip()
+        if not interface or interface == "lo":
+            continue
+        fields = values.split()
+        if len(fields) < 16:
+            continue
+        try:
+            rx_bytes = int(fields[0])
+            tx_bytes = int(fields[8])
+        except ValueError:
+            continue
+        rx_total += max(0, rx_bytes)
+        tx_total += max(0, tx_bytes)
+        found_interface = True
+
+    # An empty interface list is valid for an isolated network namespace.
+    return (rx_total, tx_total) if found_interface or not lines else None
+
+
+def _read_stats_fallback() -> dict[str, tuple[int, int]]:
+    """Read human-readable Docker stats if procfs counters are unavailable."""
     rc, out, _ = _run_docker(
         ["stats", "--no-stream", "--format", "{{.Name}}|{{.NetIO}}"],
-        timeout=60,
+        timeout=15,
     )
     result: dict[str, tuple[int, int]] = {}
     if rc != 0 or not out:
         return result
-
     for line in out.splitlines():
-        clean_line = "".join(ch for ch in line if ord(ch) >= 32 or ch == "\n").strip()
-        if not clean_line or "|" not in clean_line:
+        if "|" not in line:
             continue
-        parts = clean_line.split("|", 1)
-        name = parts[0].strip().lstrip("/")
-        net_io = parts[1].strip()
-        if not name or name.lower() == "name":
+        name, net_io = line.split("|", 1)
+        name = name.strip().lstrip("/")
+        if not name:
             continue
-        rx_b, tx_b = parse_net_io_pair(net_io)
-        result[name] = (rx_b, tx_b)
-        result[name.lower()] = (rx_b, tx_b)
+        pair = parse_net_io_pair(net_io.strip())
+        result[name] = pair
+        result[name.lower()] = pair
+    return result
 
-    # Fallback inspection if stats was empty or didn't catch names
-    if not result:
-        containers = list_docker_containers()
-        for c in containers:
-            cname = c["name"]
-            # Try inspect network stats if available or fallback
-            pass
 
+def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
+    """
+    Read cumulative raw RX/TX bytes for running Docker containers.
+
+    The primary source is /proc/<container-pid>/net/dev. Unlike docker stats,
+    procfs exposes exact byte counters without human-readable rounding.
+    Host-network containers are skipped because their counters belong to the
+    host network namespace and cannot be attributed to one container.
+    """
+    rc, ids_out, _ = _run_docker(["ps", "-q"], timeout=10)
+    if rc != 0 or not ids_out:
+        return {}
+    container_ids = [item.strip() for item in ids_out.splitlines() if item.strip()]
+    if not container_ids:
+        return {}
+
+    template = '{{range .}}{{.Name}}|{{.State.Pid}}|{{.HostConfig.NetworkMode}}{{"\\n"}}{{end}}'
+    inspect_rc, inspect_out, _ = _run_docker(
+        ["inspect", "-f", template, *container_ids],
+        timeout=15,
+    )
+    result: dict[str, tuple[int, int]] = {}
+    procfs_unavailable = inspect_rc != 0
+
+    if inspect_rc == 0 and inspect_out:
+        for line in inspect_out.splitlines():
+            parts = line.split("|", 2)
+            if len(parts) != 3:
+                continue
+            name = parts[0].strip().lstrip("/")
+            try:
+                pid = int(parts[1].strip())
+            except ValueError:
+                continue
+            network_mode = parts[2].strip()
+            if not name or network_mode == "host":
+                continue
+
+            counters = _read_netdev_counters(pid)
+            if counters is None:
+                procfs_unavailable = True
+                continue
+            result[name] = counters
+            result[name.lower()] = counters
+
+    # Keep exact procfs readings and fall back only for missing containers.
+    if procfs_unavailable:
+        fallback = _read_stats_fallback()
+        for name, counters in fallback.items():
+            if name not in result:
+                result[name] = counters
     return result
 
 
