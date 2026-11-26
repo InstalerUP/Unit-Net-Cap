@@ -3,7 +3,41 @@ set -euo pipefail
 
 REPO_OWNER="${NETCAP_REPO_OWNER:-InstalerUP}"
 REPO_NAME="${NETCAP_REPO_NAME:-unit-net-cap}"
-REPO_BRANCH="${NETCAP_REPO_BRANCH:-main}"
+
+if [ -z "${NETCAP_REPO_BRANCH:-}" ]; then
+    if [ -t 0 ] || [ -e /dev/tty ]; then
+        exec </dev/tty 2>/dev/null || true
+        echo "=========================================="
+        echo "  Unit Net Cap - Выбор ветки установки"
+        echo "=========================================="
+        echo "1) main    - Основная стабильная ветка"
+        echo "2) nightly - Ночной релиз / разработка"
+        echo "3) Другая ветка (ввести вручную)"
+        echo "------------------------------------------"
+        read -rp "Выберите вариант [1-3] (по умолчанию 1): " choice
+        case "$choice" in
+            2)
+                REPO_BRANCH="nightly"
+                ;;
+            3)
+                read -rp "Введите название ветки GitHub: " custom_branch
+                if [ -n "$custom_branch" ]; then
+                    REPO_BRANCH="$custom_branch"
+                else
+                    REPO_BRANCH="main"
+                fi
+                ;;
+            *)
+                REPO_BRANCH="main"
+                ;;
+        esac
+    else
+        REPO_BRANCH="main"
+    fi
+else
+    REPO_BRANCH="${NETCAP_REPO_BRANCH}"
+fi
+
 ARCHIVE_URL="https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_BRANCH}"
 
 INSTALL_LIB_DIR="/usr/local/lib/unit-net-cap"
