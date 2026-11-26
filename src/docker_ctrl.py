@@ -198,7 +198,7 @@ def read_all_containers_net_bytes() -> dict[str, tuple[int, int]]:
     if not container_ids:
         return {}
 
-    template = '{{range .}}{{.Name}}|{{.State.Pid}}|{{.HostConfig.NetworkMode}}{{"\\n"}}{{end}}'
+    template = '{{.Name}}|{{.State.Pid}}|{{.HostConfig.NetworkMode}}'
     inspect_rc, inspect_out, _ = _run_docker(
         ["inspect", "-f", template, *container_ids],
         timeout=15,
