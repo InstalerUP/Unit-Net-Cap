@@ -8,19 +8,19 @@ if [ -z "${NETCAP_REPO_BRANCH:-}" ]; then
     if [ -t 0 ] || [ -e /dev/tty ]; then
         exec </dev/tty 2>/dev/null || true
         echo "=========================================="
-        echo "  Unit Net Cap - Выбор ветки установки"
+        echo "  Unit Net Cap - Branch Selection"
         echo "=========================================="
-        echo "1) main    - Основная стабильная ветка"
-        echo "2) nightly - Ночной релиз / разработка"
-        echo "3) Другая ветка (ввести вручную)"
+        echo "1) main    - Stable main branch"
+        echo "2) nightly - Nightly release / development"
+        echo "3) Custom  - Enter branch name manually"
         echo "------------------------------------------"
-        read -rp "Выберите вариант [1-3] (по умолчанию 1): " choice
+        read -rp "Select option [1-3] (default 1): " choice
         case "$choice" in
             2)
                 REPO_BRANCH="nightly"
                 ;;
             3)
-                read -rp "Введите название ветки GitHub: " custom_branch
+                read -rp "Enter GitHub branch name: " custom_branch
                 if [ -n "$custom_branch" ]; then
                     REPO_BRANCH="$custom_branch"
                 else
@@ -36,6 +36,13 @@ if [ -z "${NETCAP_REPO_BRANCH:-}" ]; then
     fi
 else
     REPO_BRANCH="${NETCAP_REPO_BRANCH}"
+fi
+
+echo "Checking branch '${REPO_BRANCH}' on GitHub..."
+HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" "https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_BRANCH}" || echo "000")"
+if [ "$HTTP_CODE" -ne 200 ]; then
+    echo "Error: Branch '${REPO_BRANCH}' does not exist on GitHub (HTTP status: ${HTTP_CODE})." >&2
+    exit 1
 fi
 
 ARCHIVE_URL="https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_BRANCH}"
